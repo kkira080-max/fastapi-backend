@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+lxml
+shapely
+pyproj
+python-multipart
