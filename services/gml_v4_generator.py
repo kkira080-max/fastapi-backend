@@ -24,6 +24,7 @@ def clean_text(text):
     text = text.replace(" ", "-")
     # 3. Eliminar cualquier otro caracter que no sea alfanumérico, punto o guion
     return re.sub(r"[^A-Za-z0-9.-]", "", text.strip())
+
 def convert_gml_v3_to_v4(input_path: str, output_path: str):
     """
     Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) siguiendo la 
@@ -71,24 +72,26 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
     xml_members = []
 
     for parcel in parcels:
-        # Extraer datos de la v3
+        # Extraer y LIMPIAR datos de la v3
         local_id_el = parcel.find(".//base:localId", ns_v3)
-        local_id = local_id_el.text if local_id_el is not None else "SIN_REFERENCIA"
+        # Limpiamos el localId
+        local_id = clean_text(local_id_el.text) if local_id_el is not None else "SIN-REFERENCIA"
         
         namespace_el = parcel.find(".//base:namespace", ns_v3)
-        namespace = namespace_el.text if namespace_el is not None else "ES.SDGC.CP"
+        # Limpiamos el namespace
+        namespace = clean_text(namespace_el.text) if namespace_el is not None else "ES.SDGC.CP"
         
         area_el = parcel.find(".//cp:areaValue", ns_v3)
-        area = area_el.text if area_el is not None else "0"
+        area = area_el.text.strip() if area_el is not None else "0"
         
         pos_list_el = parcel.find(".//gml:posList", ns_v3)
         pos_list = pos_list_el.text.strip() if pos_list_el is not None else ""
 
-        # SRS (Sistema de Referencia)
+        # SRS (Sistema de Referencia) - También limpiamos por seguridad
         ms = parcel.find(".//gml:MultiSurface", ns_v3)
-        srs = ms.attrib.get("srsName") if ms is not None else "http://www.opengis.net/def/crs/EPSG/0/25830"
+        srs = clean_text(ms.attrib.get("srsName")) if ms is not None and ms.attrib.get("srsName") else "http://www.opengis.net/def/crs/EPSG/0/25830"
 
-        # Construir el bloque <member>
+        # Construir el bloque <member> con los datos limpios
         member = f"""
   <member>
     <cp:CadastralParcel gml:id="ES.SDGC.CP.{local_id}">
