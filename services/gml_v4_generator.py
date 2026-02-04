@@ -20,8 +20,7 @@ def clean_text(text):
     # 1. Quitar espacios y tabuladores en blanco al inicio y final
     text = text.strip()
     
-    # 2. Reemplazar espacios y tabuladores intermedios por guiones
-    # \s+ busca cualquier espacio en blanco (incluidos tabuladores)
+    # 2. Reemplazar secuencias de espacios/tabuladores intermedios por un guion
     text = re.sub(r'\s+', '-', text)
     
     # 3. Eliminar comillas dobles y simples
@@ -80,8 +79,8 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
         local_id_el = parcel.find(".//base:localId", ns_v3)
         raw_local_id = local_id_el.text if local_id_el is not None else "SIN_REFERENCIA"
         
-        # --- AQUÍ ESTÁ LA CLAVE: Limpiar el ID antes de usarlo ---
-        cleaned_local_id = clean_text(raw_local_id)
+        # --- LIMPIEZA APLICADA ---
+        cleaned_id = clean_text(raw_local_id)
         
         namespace_el = parcel.find(".//base:namespace", ns_v3)
         namespace = clean_text(namespace_el.text) if namespace_el is not None else "ES.SDGC.CP"
@@ -96,17 +95,17 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
         ms = parcel.find(".//gml:MultiSurface", ns_v3)
         srs = ms.attrib.get("srsName") if ms is not None else "http://www.opengis.net/def/crs/EPSG/0/25830"
 
-        # Construir el bloque <member> usando el ID LIMPIO
+        # Construir el bloque <member> usando el ID LIMPIO en TODAS partes
         member = f"""
   <member>
-    <cp:CadastralParcel gml:id="ES.SDGC.CP.{cleaned_local_id}">
+    <cp:CadastralParcel gml:id="ES.SDGC.CP.{cleaned_id}">
       <cp:areaValue uom="m2">{area}</cp:areaValue>
       <cp:beginLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:endLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:geometry>
-        <gml:MultiSurface gml:id="MultiSurface_{cleaned_local_id}" srsName="{srs}">
+        <gml:MultiSurface gml:id="MultiSurface_{cleaned_id}" srsName="{srs}">
           <gml:surfaceMember>
-            <gml:Surface gml:id="Surface_{cleaned_local_id}.1" srsName="{srs}">
+            <gml:Surface gml:id="Surface_{cleaned_id}.1" srsName="{srs}">
               <gml:patches>
                 <gml:PolygonPatch>
                   <gml:exterior>
@@ -122,12 +121,12 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
       </cp:geometry>
       <cp:inspireId>
         <Identifier xmlns="http://inspire.ec.europa.eu/schemas/base/3.3">
-          <localId>{cleaned_local_id}</localId>
+          <localId>{cleaned_id}</localId>
           <namespace>{namespace}</namespace>
         </Identifier>
       </cp:inspireId>
-      <cp:label>{cleaned_local_id}</cp:label>
-      <cp:nationalCadastralReference>{cleaned_local_id}</cp:nationalCadastralReference>
+      <cp:label>{cleaned_id}</cp:label>
+      <cp:nationalCadastralReference>{cleaned_id}</cp:nationalCadastralReference>
     </cp:CadastralParcel>
   </member>"""
         xml_members.append(member)
