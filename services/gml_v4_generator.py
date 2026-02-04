@@ -16,10 +16,14 @@ NS = {
 }
 
 def clean_text(text):
-    """Limpia el texto para que sea válido en GML IDs"""
+    """Limpia el texto: elimina comillas, reemplaza espacios por guiones y quita caracteres inválidos."""
     if not text: return "N-A"
-    return re.sub(r"[^A-Za-z0-9.-]", "", text.strip().replace(" ", "-"))
-
+    # 1. Eliminar comillas dobles y simples
+    text = text.replace('"', '').replace("'", "")
+    # 2. Reemplazar espacios por guiones
+    text = text.replace(" ", "-")
+    # 3. Eliminar cualquier otro caracter que no sea alfanumérico, punto o guion
+    return re.sub(r"[^A-Za-z0-9.-]", "", text.strip())
 def convert_gml_v3_to_v4(input_path: str, output_path: str):
     """
     Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) siguiendo la 
