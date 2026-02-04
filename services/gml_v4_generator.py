@@ -2,8 +2,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-class AlreadyV4Error(Exception):
-    pass
 # Excepción personalizada para detectar archivos ya convertidos
 class AlreadyV4Error(Exception):
     pass
@@ -27,8 +25,7 @@ def clean_text(text):
 
 def convert_gml_v3_to_v4(input_path: str, output_path: str):
     """
-    Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) siguiendo la 
-    estructura de la Sede Electrónica del Catastro.
+    Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) limpiando los datos.
     """
     try:
         tree = ET.parse(input_path)
@@ -55,7 +52,7 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
     timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     count = len(parcels)
 
-    # Construcción manual del XML para asegurar orden y prefijos exactos
+    # Construcción manual del XML
     xml_header = f"""<?xml version="1.0" encoding="utf-8"?>
 <FeatureCollection
     xmlns="http://www.opengis.net/wfs/2.0"
