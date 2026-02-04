@@ -14,20 +14,20 @@ NS = {
 }
 
 def clean_text(text):
-    """Limpia el texto para que sea válido en GML IDs"""
+    """Limpia el texto: elimina comillas, tabuladores, y reemplaza espacios por guiones."""
     if not text: return "N-A"
     
-    # 1. Quitar espacios en blanco al inicio y final
+    # 1. Quitar espacios y tabuladores en blanco al inicio y final
     text = text.strip()
     
-    # 2. Reemplazar espacios intermedios por guiones
-    text = text.replace(" ", "-")
+    # 2. Reemplazar espacios y tabuladores intermedios por guiones
+    # \s+ busca cualquier espacio en blanco (incluidos tabuladores)
+    text = re.sub(r'\s+', '-', text)
     
     # 3. Eliminar comillas dobles y simples
     text = text.replace('"', '').replace("'", "")
     
     # 4. Asegurar que solo queden caracteres alfanuméricos, puntos o guiones
-    # Nota: Si el ID original tiene caracteres raros, se eliminarán aquí.
     return re.sub(r"[^A-Za-z0-9.-]", "", text)
 
 def convert_gml_v3_to_v4(input_path: str, output_path: str):
