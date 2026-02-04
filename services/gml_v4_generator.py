@@ -14,24 +14,27 @@ NS = {
 }
 
 def clean_text(text):
-    """Limpia el texto: elimina comillas, tabuladores, y reemplaza espacios por guiones."""
+    """Limpia el texto: elimina comillas, tabuladores, espacios y caracteres especiales."""
     if not text: return "N-A"
     
-    # 1. Quitar comillas dobles y simples primero para evitar confusiones
+    # 1. Quitar comillas (simples y dobles)
     text = text.replace('"', '').replace("'", "")
     
-    # 2. Quitar espacios y tabuladores en blanco al inicio y final
-    text = text.strip()
-    
-    # 3. Reemplazar secuencias de espacios/tabuladores intermedios por un guion
+    # 2. Reemplazar CUALQUIER espacio en blanco (espacio, tabulador, salto de línea) por un guion
     text = re.sub(r'\s+', '-', text)
     
-    # 4. Asegurar que solo queden caracteres alfanuméricos, puntos o guiones
-    return re.sub(r"[^A-Za-z0-9.-]", "", text)
+    # 3. Eliminar cualquier cosa que no sea Alfanumérico, Punto o Guion
+    text = re.sub(r"[^A-Za-z0-9.-]", "", text)
+    
+    # 4. Asegurar que no queden múltiples guiones seguidos
+    text = re.sub(r"-+", "-", text)
+    
+    # 5. Quitar guiones al principio o final
+    return text.strip("-")
 
 def convert_gml_v3_to_v4(input_path: str, output_path: str):
     """
-    Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) limpiando todos los datos.
+    Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) limpiando los datos.
     """
     try:
         tree = ET.parse(input_path)
@@ -79,14 +82,13 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
         local_id_el = parcel.find(".//base:localId", ns_v3)
         raw_local_id = local_id_el.text if local_id_el is not None else "SIN_REFERENCIA"
         
-        # LIMPIEZA
-        cleaned_id = clean_text(raw_local_id)
+        # --- AQUÍ LIMPIAMOS DE FORMA AGRESIVA ---
+        cleaned_local_id = clean_text(raw_local_id)
         
         namespace_el = parcel.find(".//base:namespace", ns_v3)
         namespace = clean_text(namespace_el.text) if namespace_el is not None else "ES.SDGC.CP"
         
         area_el = parcel.find(".//cp:areaValue", ns_v3)
-        # La zona debe ser un número, si falla la limpieza aquí, podría ser un problema de tipo
         area = area_el.text.strip() if area_el is not None else "0"
         
         pos_list_el = parcel.find(".//gml:posList", ns_v3)
@@ -94,19 +96,19 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
 
         # SRS (Sistema de Referencia)
         ms = parcel.find(".//gml:MultiSurface", ns_v3)
-        srs = clean_text(ms.attrib.get("srsName")) if ms is not None and ms.attrib.get("srsName") else "http://www.opengis.net/def/crs/EPSG/0/25830"
+        srs = ms.attrib.get("srsName") if ms is not None else "http://www.opengis.net/def/crs/EPSG/0/25830"
 
-        # Construir el bloque <member> usando los campos LIMPIOS
+        # Construir el bloque <member> usando el ID LIMPIO
         member = f"""
   <member>
-    <cp:CadastralParcel gml:id="ES.SDGC.CP.{cleaned_id}">
+    <cp:CadastralParcel gml:id="ES.SDGC.CP.{cleaned_local_id}">
       <cp:areaValue uom="m2">{area}</cp:areaValue>
       <cp:beginLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:endLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:geometry>
-        <gml:MultiSurface gml:id="MultiSurface_{cleaned_id}" srsName="{srs}">
+        <gml:MultiSurface gml:id="MultiSurface_{cleaned_local_id}" srsName="{srs}">
           <gml:surfaceMember>
-            <gml:Surface gml:id="Surface_{cleaned_id}.1" srsName="{srs}">
+            <gml:Surface gml:id="Surface_{cleaned_local_id}.1" srsName="{srs}">
               <gml:patches>
                 <gml:PolygonPatch>
                   <gml:exterior>
@@ -122,12 +124,12 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
       </cp:geometry>
       <cp:inspireId>
         <Identifier xmlns="http://inspire.ec.europa.eu/schemas/base/3.3">
-          <localId>{cleaned_id}</localId>
+          <localId>{cleaned_local_id}</localId>
           <namespace>{namespace}</namespace>
         </Identifier>
       </cp:inspireId>
-      <cp:label>{cleaned_id}</cp:label>
-      <cp:nationalCadastralReference>{cleaned_id}</cp:nationalCadastralReference>
+      <cp:label>{cleaned_local_id}</cp:label>
+      <cp:nationalCadastralReference>{cleaned_local_id}</cp:nationalCadastralReference>
     </cp:CadastralParcel>
   </member>"""
         xml_members.append(member)
