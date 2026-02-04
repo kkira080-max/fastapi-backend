@@ -14,14 +14,21 @@ NS = {
 }
 
 def clean_text(text):
-    """Limpia el texto: elimina comillas, reemplaza espacios por guiones y quita caracteres inválidos."""
+    """Limpia el texto para que sea válido en GML IDs"""
     if not text: return "N-A"
-    # 1. Eliminar comillas dobles y simples
-    text = text.replace('"', '').replace("'", "")
-    # 2. Reemplazar espacios por guiones
+    
+    # 1. Quitar espacios en blanco al inicio y final
+    text = text.strip()
+    
+    # 2. Reemplazar espacios intermedios por guiones
     text = text.replace(" ", "-")
-    # 3. Eliminar cualquier otro caracter que no sea alfanumérico, punto o guion
-    return re.sub(r"[^A-Za-z0-9.-]", "", text.strip())
+    
+    # 3. Eliminar comillas dobles y simples
+    text = text.replace('"', '').replace("'", "")
+    
+    # 4. Asegurar que solo queden caracteres alfanuméricos, puntos o guiones
+    # Nota: Si el ID original tiene caracteres raros, se eliminarán aquí.
+    return re.sub(r"[^A-Za-z0-9.-]", "", text)
 
 def convert_gml_v3_to_v4(input_path: str, output_path: str):
     """
@@ -69,13 +76,14 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
     xml_members = []
 
     for parcel in parcels:
-        # Extraer y LIMPIAR datos de la v3
+        # Extraer datos de la v3
         local_id_el = parcel.find(".//base:localId", ns_v3)
-        # Limpiamos el localId
-        local_id = clean_text(local_id_el.text) if local_id_el is not None else "SIN-REFERENCIA"
+        raw_local_id = local_id_el.text if local_id_el is not None else "SIN_REFERENCIA"
+        
+        # --- AQUÍ ESTÁ LA CLAVE: Limpiar el ID antes de usarlo ---
+        cleaned_local_id = clean_text(raw_local_id)
         
         namespace_el = parcel.find(".//base:namespace", ns_v3)
-        # Limpiamos el namespace
         namespace = clean_text(namespace_el.text) if namespace_el is not None else "ES.SDGC.CP"
         
         area_el = parcel.find(".//cp:areaValue", ns_v3)
@@ -84,21 +92,21 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
         pos_list_el = parcel.find(".//gml:posList", ns_v3)
         pos_list = pos_list_el.text.strip() if pos_list_el is not None else ""
 
-        # SRS (Sistema de Referencia) - También limpiamos por seguridad
+        # SRS (Sistema de Referencia)
         ms = parcel.find(".//gml:MultiSurface", ns_v3)
-        srs = clean_text(ms.attrib.get("srsName")) if ms is not None and ms.attrib.get("srsName") else "http://www.opengis.net/def/crs/EPSG/0/25830"
+        srs = ms.attrib.get("srsName") if ms is not None else "http://www.opengis.net/def/crs/EPSG/0/25830"
 
-        # Construir el bloque <member> con los datos limpios
+        # Construir el bloque <member> usando el ID LIMPIO
         member = f"""
   <member>
-    <cp:CadastralParcel gml:id="ES.SDGC.CP.{local_id}">
+    <cp:CadastralParcel gml:id="ES.SDGC.CP.{cleaned_local_id}">
       <cp:areaValue uom="m2">{area}</cp:areaValue>
       <cp:beginLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:endLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:geometry>
-        <gml:MultiSurface gml:id="MultiSurface_{local_id}" srsName="{srs}">
+        <gml:MultiSurface gml:id="MultiSurface_{cleaned_local_id}" srsName="{srs}">
           <gml:surfaceMember>
-            <gml:Surface gml:id="Surface_{local_id}.1" srsName="{srs}">
+            <gml:Surface gml:id="Surface_{cleaned_local_id}.1" srsName="{srs}">
               <gml:patches>
                 <gml:PolygonPatch>
                   <gml:exterior>
@@ -114,12 +122,12 @@ def convert_gml_v3_to_v4(input_path: str, output_path: str):
       </cp:geometry>
       <cp:inspireId>
         <Identifier xmlns="http://inspire.ec.europa.eu/schemas/base/3.3">
-          <localId>{local_id}</localId>
+          <localId>{cleaned_local_id}</localId>
           <namespace>{namespace}</namespace>
         </Identifier>
       </cp:inspireId>
-      <cp:label>{local_id}</cp:label>
-      <cp:nationalCadastralReference>{local_id}</cp:nationalCadastralReference>
+      <cp:label>{cleaned_local_id}</cp:label>
+      <cp:nationalCadastralReference>{cleaned_local_id}</cp:nationalCadastralReference>
     </cp:CadastralParcel>
   </member>"""
         xml_members.append(member)
