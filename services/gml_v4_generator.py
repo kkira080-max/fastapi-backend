@@ -1,13 +1,13 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
-def is_gml_v4(root) -> bool:
-    """
-    Detecta si el GML ya es versión v4, buscando cp:CadastralParcel con namespace v4
-    """
-    parcel_v4 = root.find(".//{http://inspire.ec.europa.eu/schemas/cp/4.0}CadastralParcel")
-    return parcel_v4 is not None
-# ---------------- Namespaces
+
+class AlreadyV4Error(Exception):
+    pass
+# Excepción personalizada para detectar archivos ya convertidos
+class AlreadyV4Error(Exception):
+    pass
+
 NS = {
     "gml": "http://www.opengis.net/gml/3.2",
     "cp3": "urn:x-inspire:specification:gmlas:CadastralParcels:3.0",
@@ -15,73 +15,43 @@ NS = {
     "base": "urn:x-inspire:specification:gmlas:BaseTypes:3.2"
 }
 
-# ---------------- Función para limpiar gml:id
-def clean_gml_id(value: str) -> str:
+def clean_text(text):
+    """Limpia el texto para que sea válido en GML IDs"""
+    if not text: return "N-A"
+    return re.sub(r"[^A-Za-z0-9.-]", "", text.strip().replace(" ", "-"))
+
+def convert_gml_v3_to_v4(input_path: str, output_path: str):
     """
-    Convierte una cadena en un identificador seguro para gml:id:
-    - reemplaza espacios por guion "-"
-    - elimina cualquier otro carácter que no sea letra, número, punto o guion
+    Convierte GML v3 (Catastro) a v4 (INSPIRE CP 4.0) siguiendo la 
+    estructura de la Sede Electrónica del Catastro.
     """
-    value = value.strip()
-    value = value.replace(" ", "-")           # espacios -> guion
-    value = re.sub(r"[^A-Za-z0-9.-]", "", value)  # eliminar todo lo demás
-    return value
+    try:
+        tree = ET.parse(input_path)
+        root = tree.getroot()
+    except Exception as e:
+        raise ValueError(f"Error al leer el archivo GML: {e}")
 
-# ---------------- Función principal
+    # Verificar si ya es v4 (Namespace cp 4.0)
+    if "inspire.ec.europa.eu/schemas/cp/4.0" in root.tag:
+        raise AlreadyV4Error("El archivo ya es versión 4.0")
 
+    # Namespaces v3 para extraer datos
+    ns_v3 = {
+        "gml": "http://www.opengis.net/gml/3.2",
+        "cp": "urn:x-inspire:specification:gmlas:CadastralParcels:3.0",
+        "base": "urn:x-inspire:specification:gmlas:BaseTypes:3.2"
+    }
 
-def convert_gml_v3_to_v4(input_gml: str, output_gml: str):
-    tree = ET.parse(input_gml)
-    root = tree.getroot()
+    parcels = root.findall(".//cp:CadastralParcel", ns_v3)
+    if not parcels:
+        raise ValueError("No se encontraron parcelas CadastralParcel v3 en el archivo")
 
-    # -------------- Detectar si ya es v4
-    if is_gml_v4(root):
-        print(f"El archivo {input_gml} ya está en versión GML v4. No se realizará conversión.")
-        return
+    # Preparar datos de cabecera
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    count = len(parcels)
 
-    # ... resto de tu código de conversión v3 -> v4 ...
-
-
-    # ---------------- Extraer parcela
-    parcel = root.find(".//cp3:CadastralParcel", NS)
-    if parcel is None:
-        raise ValueError("No se encontró cp:CadastralParcel en el GML v3")
-
-    # ---------------- EPSG
-    multi_surface = parcel.find(".//gml:MultiSurface", NS)
-    srs_name = multi_surface.attrib.get("srsName") if multi_surface is not None else None
-    epsg = srs_name.split("::")[-1] if srs_name else "25830"  # default EPSG si falta
-
-    # ---------------- Área
-    area_el = parcel.find("cp3:areaValue", NS)
-    area_value = area_el.text if area_el is not None else "0"
-
-    # ---------------- Inspire ID
-    local_id_el = parcel.find(".//base:localId", NS)
-    namespace_el = parcel.find(".//base:namespace", NS)
-
-    if local_id_el is None or namespace_el is None:
-        raise ValueError("No se encontró localId o namespace en el GML v3")
-
-    local_id = local_id_el.text
-    namespace = namespace_el.text
-
-    # Limpiar namespace y local_id para gml:id
-    clean_namespace = clean_gml_id(namespace)
-    clean_local_id = clean_gml_id(local_id)
-    gml_id = f"{clean_namespace}.{clean_local_id}"
-
-    # ---------------- Geometría
-    pos_list_el = parcel.find(".//gml:posList", NS)
-    if pos_list_el is None:
-        raise ValueError("No se encontró gml:posList")
-    pos_list = pos_list_el.text.strip()
-
-    # ---------------- Timestamp
-    timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-    # ---------------- Generar GML v4
-    gml_v4 = f'''<?xml version="1.0" encoding="utf-8"?>
+    # Construcción manual del XML para asegurar orden y prefijos exactos
+    xml_header = f"""<?xml version="1.0" encoding="utf-8"?>
 <FeatureCollection
     xmlns="http://www.opengis.net/wfs/2.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -89,29 +59,42 @@ def convert_gml_v3_to_v4(input_gml: str, output_gml: str):
     xmlns:xlink="http://www.w3.org/1999/xlink"
     xmlns:cp="http://inspire.ec.europa.eu/schemas/cp/4.0"
     xmlns:gmd="http://www.isotc211.org/2005/gmd"
-    xsi:schemaLocation="
-        http://www.opengis.net/wfs/2.0 http://schemas.opengis.net/wfs/2.0/wfs.xsd
-        http://inspire.ec.europa.eu/schemas/cp/4.0 http://inspire.ec.europa.eu/schemas/cp/4.0/CadastralParcels.xsd"
+    xsi:schemaLocation="http://www.opengis.net/wfs/2.0 http://schemas.opengis.net/wfs/2.0/wfs.xsd http://inspire.ec.europa.eu/schemas/cp/4.0 http://inspire.ec.europa.eu/schemas/cp/4.0/CadastralParcels.xsd"
     timeStamp="{timestamp}"
-    numberMatched="1"
-    numberReturned="1">
+    numberMatched="{count}"
+    numberReturned="{count}">"""
 
+    xml_members = []
+
+    for parcel in parcels:
+        # Extraer datos de la v3
+        local_id_el = parcel.find(".//base:localId", ns_v3)
+        local_id = local_id_el.text if local_id_el is not None else "SIN_REFERENCIA"
+        
+        namespace_el = parcel.find(".//base:namespace", ns_v3)
+        namespace = namespace_el.text if namespace_el is not None else "ES.SDGC.CP"
+        
+        area_el = parcel.find(".//cp:areaValue", ns_v3)
+        area = area_el.text if area_el is not None else "0"
+        
+        pos_list_el = parcel.find(".//gml:posList", ns_v3)
+        pos_list = pos_list_el.text.strip() if pos_list_el is not None else ""
+
+        # SRS (Sistema de Referencia)
+        ms = parcel.find(".//gml:MultiSurface", ns_v3)
+        srs = ms.attrib.get("srsName") if ms is not None else "http://www.opengis.net/def/crs/EPSG/0/25830"
+
+        # Construir el bloque <member>
+        member = f"""
   <member>
-    <cp:CadastralParcel gml:id="{gml_id}">
-      <cp:areaValue uom="m2">{area_value}</cp:areaValue>
-
-      <cp:beginLifespanVersion xsi:nil="true"
-        nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
-
-      <cp:endLifespanVersion xsi:nil="true"
-        nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
-
+    <cp:CadastralParcel gml:id="ES.SDGC.CP.{local_id}">
+      <cp:areaValue uom="m2">{area}</cp:areaValue>
+      <cp:beginLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
+      <cp:endLifespanVersion xsi:nil="true" nilReason="http://inspire.ec.europa.eu/codelist/VoidReasonValue/Unpopulated"/>
       <cp:geometry>
-        <gml:MultiSurface gml:id="MultiSurface_{clean_local_id}"
-          srsName="http://www.opengis.net/def/crs/EPSG/0/{epsg}">
+        <gml:MultiSurface gml:id="MultiSurface_{local_id}" srsName="{srs}">
           <gml:surfaceMember>
-            <gml:Surface gml:id="Surface_{clean_local_id}.1"
-              srsName="http://www.opengis.net/def/crs/EPSG/0/{epsg}">
+            <gml:Surface gml:id="Surface_{local_id}.1" srsName="{srs}">
               <gml:patches>
                 <gml:PolygonPatch>
                   <gml:exterior>
@@ -125,24 +108,20 @@ def convert_gml_v3_to_v4(input_gml: str, output_gml: str):
           </gml:surfaceMember>
         </gml:MultiSurface>
       </cp:geometry>
-
       <cp:inspireId>
         <Identifier xmlns="http://inspire.ec.europa.eu/schemas/base/3.3">
-          <localId>{clean_local_id}</localId>
-          <namespace>{clean_namespace}</namespace>
+          <localId>{local_id}</localId>
+          <namespace>{namespace}</namespace>
         </Identifier>
       </cp:inspireId>
-
-      <cp:label>{clean_local_id}</cp:label>
-      <cp:nationalCadastralReference>{clean_local_id}</cp:nationalCadastralReference>
-
+      <cp:label>{local_id}</cp:label>
+      <cp:nationalCadastralReference>{local_id}</cp:nationalCadastralReference>
     </cp:CadastralParcel>
-  </member>
-</FeatureCollection>
-'''
+  </member>"""
+        xml_members.append(member)
 
-    # ---------------- Escribir salida
-    with open(output_gml, "w", encoding="utf-8") as f:
-        f.write(gml_v4)
+    # Unir todo
+    full_xml = xml_header + "".join(xml_members) + "\n</FeatureCollection>"
 
-    print(f"GML v4 generado correctamente: {output_gml}")
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(full_xml)
