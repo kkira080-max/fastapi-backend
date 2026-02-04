@@ -4,3 +4,4 @@ lxml
 shapely
 pyproj
 python-multipart
+ezdxf
